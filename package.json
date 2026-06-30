@@ -2,7 +2,7 @@
   "name": "vscode-changelists",
   "displayName": "Git Changelists",
   "description": "JetBrains-style git changelists for VSCode. Group working-tree changes into changelists and commit only the ones you choose.",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "publisher": "jaroros",
   "license": "MIT",
   "repository": {
@@ -42,6 +42,18 @@
       ]
     },
     "commands": [
+      {
+        "command": "changelists.pull",
+        "title": "Pull",
+        "category": "Changelists",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "changelists.push",
+        "title": "Push",
+        "category": "Changelists",
+        "icon": "$(arrow-up)"
+      },
       {
         "command": "changelists.refresh",
         "title": "Refresh",
@@ -118,19 +130,29 @@
     "menus": {
       "view/title": [
         {
-          "command": "changelists.commitChangelist",
+          "command": "changelists.pull",
           "when": "view == changelists.view",
           "group": "navigation@1"
         },
         {
-          "command": "changelists.createChangelist",
+          "command": "changelists.push",
           "when": "view == changelists.view",
           "group": "navigation@2"
         },
         {
-          "command": "changelists.refresh",
+          "command": "changelists.commitChangelist",
           "when": "view == changelists.view",
           "group": "navigation@3"
+        },
+        {
+          "command": "changelists.createChangelist",
+          "when": "view == changelists.view",
+          "group": "navigation@4"
+        },
+        {
+          "command": "changelists.refresh",
+          "when": "view == changelists.view",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [

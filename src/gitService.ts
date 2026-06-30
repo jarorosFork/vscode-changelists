@@ -96,6 +96,34 @@ export class GitService {
     }
   }
 
+  get currentBranch(): string | undefined {
+    return this.repository?.state.HEAD?.name;
+  }
+
+  get hasUpstream(): boolean {
+    return !!this.repository?.state.HEAD?.upstream;
+  }
+
+  get remoteNames(): string[] {
+    return this.repository?.state.remotes.map((r) => r.name) ?? [];
+  }
+
+  async pull(): Promise<void> {
+    const repo = this.repository;
+    if (!repo) throw new Error('No git repository found.');
+    await repo.pull();
+  }
+
+  /**
+   * Push the current branch. If it has no upstream yet, the caller must pass
+   * a remote name and set `setUpstream` so the branch starts tracking it.
+   */
+  async push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void> {
+    const repo = this.repository;
+    if (!repo) throw new Error('No git repository found.');
+    await repo.push(remoteName, branchName, setUpstream);
+  }
+
   /**
    * Discard local changes for the given files, restoring them to HEAD
    * (`git clean`/`git checkout`). For untracked files this deletes them.

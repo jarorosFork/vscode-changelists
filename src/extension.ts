@@ -37,6 +37,48 @@ export async function activate(context: vscode.ExtensionContext) {
 
   reg('changelists.refresh', () => provider.refresh());
 
+  reg('changelists.pull', async () => {
+    try {
+      await git.pull();
+      provider.refresh();
+      vscode.window.showInformationMessage('Pull complete.');
+    } catch (err) {
+      vscode.window.showErrorMessage(`Pull failed: ${(err as Error).message}`);
+    }
+  });
+
+  reg('changelists.push', async () => {
+    try {
+      if (git.hasUpstream) {
+        await git.push();
+        vscode.window.showInformationMessage('Pushed.');
+        return;
+      }
+      // No upstream yet (e.g. a brand new branch) — ask which remote to publish to.
+      const branch = git.currentBranch;
+      if (!branch) {
+        vscode.window.showErrorMessage('No current branch to push.');
+        return;
+      }
+      const remotes = git.remoteNames;
+      if (remotes.length === 0) {
+        vscode.window.showErrorMessage('No git remotes configured.');
+        return;
+      }
+      const remote =
+        remotes.length === 1
+          ? remotes[0]
+          : await vscode.window.showQuickPick(remotes, {
+              placeHolder: `"${branch}" has no upstream — choose a remote to publish to`,
+            });
+      if (!remote) return;
+      await git.push(remote, branch, true);
+      vscode.window.showInformationMessage(`Pushed and set upstream to ${remote}/${branch}.`);
+    } catch (err) {
+      vscode.window.showErrorMessage(`Push failed: ${(err as Error).message}`);
+    }
+  });
+
   reg('changelists.createChangelist', async () => {
     const name = await vscode.window.showInputBox({
       prompt: 'New changelist name',

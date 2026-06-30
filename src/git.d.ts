@@ -34,10 +34,21 @@ export interface Change {
   readonly status: Status;
 }
 
+export interface Remote {
+  readonly name: string;
+}
+
+export interface Branch {
+  readonly name?: string;
+  readonly upstream?: { readonly remote: string; readonly name: string };
+}
+
 export interface RepositoryState {
   readonly workingTreeChanges: Change[];
   readonly indexChanges: Change[];
   readonly untrackedChanges: Change[];
+  readonly remotes: Remote[];
+  readonly HEAD: Branch | undefined;
   readonly onDidChange: Event<void>;
 }
 
@@ -49,4 +60,6 @@ export interface Repository {
   clean(paths: string[]): Promise<void>;
   commit(message: string, opts?: { all?: boolean; amend?: boolean }): Promise<void>;
   log(opts?: { maxEntries?: number }): Promise<{ message: string }[]>;
+  pull(): Promise<void>;
+  push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
 }
