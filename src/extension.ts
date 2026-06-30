@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ChangelistManager, DEFAULT_CHANGELIST } from './changelistManager';
 import { GitService } from './gitService';
 import { ChangelistTreeProvider, ChangelistNode, ChangeNode } from './treeProvider';
+import { Status } from './git';
 
 export async function activate(context: vscode.ExtensionContext) {
   const git = new GitService();
@@ -163,15 +164,15 @@ export async function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand('vscode.open', uri);
       return;
     }
-    const head = gitHeadUri(uri);
     const name = path.basename(uri.fsPath);
-    // Deleted in the working tree: there is no file to put on the right side,
-    // so show the HEAD content read-only instead of diffing against nothing.
-    if (!fs.existsSync(uri.fsPath)) {
-      await vscode.commands.executeCommand('vscode.diff', head, gitEmptyUri(uri), `${name} (Deleted)`);
-      return;
-    }
-    await vscode.commands.executeCommand('vscode.diff', head, uri, `${name} (Working Tree ↔ HEAD)`);
+    const noHead = !hasHeadVersion(node.change.status); // added/renamed: nothing at HEAD
+    const noWorktree = !fs.existsSync(uri.fsPath); // deleted: nothing on disk
+
+    // Pick a real source per side, falling back to empty where the file doesn't exist.
+    const left = noHead ? gitEmptyUri(uri) : gitHeadUri(uri);
+    const right = noWorktree ? gitEmptyUri(uri) : uri;
+    const suffix = noHead ? '(Added)' : noWorktree ? '(Deleted)' : '(Working Tree ↔ HEAD)';
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${name} ${suffix}`);
   });
 
   reg('changelists.openChange', async (node?: ChangeNode) => {
@@ -193,9 +194,24 @@ function gitHeadUri(uri: vscode.Uri): vscode.Uri {
   return uri.with({ scheme: 'git', query: JSON.stringify({ path: uri.fsPath, ref: 'HEAD' }) });
 }
 
-/** A URI that always resolves to empty content (used as the right side for deletions). */
+/** A URI that always resolves to empty content (used where a side has no file). */
 function gitEmptyUri(uri: vscode.Uri): vscode.Uri {
   return uri.with({ scheme: EMPTY_SCHEME });
+}
+
+/** Whether this change has a version at HEAD (false for newly added/renamed files). */
+function hasHeadVersion(status: Status): boolean {
+  switch (status) {
+    case Status.INDEX_ADDED:
+    case Status.INDEX_COPIED:
+    case Status.INDEX_RENAMED:
+    case Status.UNTRACKED:
+    case Status.INTENT_TO_ADD:
+    case Status.INTENT_TO_RENAME:
+      return false;
+    default:
+      return true;
+  }
 }
 
 /** Resolve the set of nodes a context-menu command acts on (supports multi-select). */
