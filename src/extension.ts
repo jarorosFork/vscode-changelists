@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ChangelistManager, DEFAULT_CHANGELIST } from './changelistManager';
 import { GitService } from './gitService';
 import { ChangelistTreeProvider, ChangelistNode, ChangeNode } from './treeProvider';
@@ -15,6 +16,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const manager = new ChangelistManager(context.workspaceState);
   const provider = new ChangelistTreeProvider(manager, git);
+  // Resolves to empty content; used as the right side when diffing a deleted file.
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(EMPTY_SCHEME, {
+      provideTextDocumentContent: () => '',
+    }),
+  );
+
   const view = vscode.window.createTreeView('changelists.view', {
     treeDataProvider: provider,
     dragAndDropController: provider,
@@ -155,14 +163,32 @@ export async function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand('vscode.open', uri);
       return;
     }
-    const head = uri.with({ scheme: 'git', query: JSON.stringify({ path: uri.fsPath, ref: 'HEAD' }) });
-    const title = `${path.basename(uri.fsPath)} (Working Tree ↔ HEAD)`;
-    await vscode.commands.executeCommand('vscode.diff', head, uri, title);
+    const head = gitHeadUri(uri);
+    const name = path.basename(uri.fsPath);
+    // Deleted in the working tree: there is no file to put on the right side,
+    // so show the HEAD content read-only instead of diffing against nothing.
+    if (!fs.existsSync(uri.fsPath)) {
+      await vscode.commands.executeCommand('vscode.diff', head, gitEmptyUri(uri), `${name} (Deleted)`);
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.diff', head, uri, `${name} (Working Tree ↔ HEAD)`);
   });
 
   reg('changelists.openChange', async (node?: ChangeNode) => {
     if (node) await vscode.commands.executeCommand('vscode.open', node.change.uri);
   });
+}
+
+const EMPTY_SCHEME = 'changelist-empty';
+
+/** A `git:` URI that resolves to the file's content at HEAD. */
+function gitHeadUri(uri: vscode.Uri): vscode.Uri {
+  return uri.with({ scheme: 'git', query: JSON.stringify({ path: uri.fsPath, ref: 'HEAD' }) });
+}
+
+/** A URI that always resolves to empty content (used as the right side for deletions). */
+function gitEmptyUri(uri: vscode.Uri): vscode.Uri {
+  return uri.with({ scheme: EMPTY_SCHEME });
 }
 
 /** Resolve the set of nodes a context-menu command acts on (supports multi-select). */
