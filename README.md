@@ -14,8 +14,13 @@ commit a changelist, the extension stages **exactly** that changelist's files
 (unstaging everything else first) and commits them. Other changelists are never
 touched.
 
-State is stored in VSCode workspace state — it is local to your machine and never
-written into the repository.
+State is stored in `<repo>/.git/changelists.json` — local to your machine, never
+committed (nothing under `.git/` ever is), and independent of the extension's own
+storage. This means changelists survive extension updates, reinstalls, and even
+"delete extension data" prompts, the same way JetBrains keeps changelist
+membership in `.idea/workspace.xml` rather than IDE state. Upgrading from a
+version before 0.0.9 migrates your existing assignments automatically on first
+load.
 
 ## Usage
 

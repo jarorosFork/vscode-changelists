@@ -16,7 +16,7 @@ export async function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  const manager = new ChangelistManager(context.workspaceState);
+  const manager = new ChangelistManager(git, context.workspaceState);
   const provider = new ChangelistTreeProvider(manager, git);
   // Resolves to empty content; used as the right side when diffing a deleted file.
   context.subscriptions.push(

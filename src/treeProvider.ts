@@ -89,6 +89,9 @@ export class ChangelistTreeProvider
 
   /** Tracked changes grouped by changelist, plus untracked files kept apart. */
   private group(): { groups: Map<string, WorkingChange[]>; untracked: WorkingChange[] } {
+    // Picks up the repo's state file if the repository only became available
+    // after the manager was constructed (e.g. git extension still scanning).
+    this.manager.ensureLoaded();
     const changes = this.git.getChanges();
     const tracked = changes.filter((c) => !c.untracked);
     const untracked = changes.filter((c) => c.untracked);
