@@ -175,7 +175,14 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   reg('changelists.openChange', async (node?: ChangeNode) => {
-    if (node) await vscode.commands.executeCommand('vscode.open', node.change.uri);
+    if (!node) return;
+    const uri = node.change.uri;
+    // A deleted file has nothing to open in the working tree — show HEAD read-only.
+    if (!node.change.untracked && !fs.existsSync(uri.fsPath)) {
+      await vscode.commands.executeCommand('vscode.open', gitHeadUri(uri));
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.open', uri);
   });
 }
 
