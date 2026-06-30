@@ -112,6 +112,40 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  reg('changelists.rollbackChangelist', async (node?: ChangelistNode) => {
+    const name = node?.name ?? (await pickChangelist(manager));
+    if (!name) return;
+    const changes = git
+      .getChanges()
+      .filter((c) => !c.untracked && manager.changelistOf(c.fsPath) === name);
+    if (changes.length === 0) {
+      vscode.window.showInformationMessage(`Changelist "${name}" has no changes to roll back.`);
+      return;
+    }
+    await rollback(changes, `all ${changes.length} change(s) in "${name}"`);
+  });
+
+  reg('changelists.rollbackChange', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
+    const selected = selection(node, nodes);
+    if (selected.length === 0) return;
+    await rollback(selected.map((n) => n.change), describe(selected));
+  });
+
+  async function rollback(changes: { fsPath: string }[], what: string) {
+    const confirmed = await vscode.window.showWarningMessage(
+      `Roll back ${what}? This discards the local changes and cannot be undone.`,
+      { modal: true },
+      'Rollback',
+    );
+    if (confirmed !== 'Rollback') return;
+    try {
+      await git.discardChanges(changes.map((c) => c.fsPath));
+      provider.refresh();
+    } catch (err) {
+      vscode.window.showErrorMessage(`Rollback failed: ${(err as Error).message}`);
+    }
+  }
+
   reg('changelists.openChange', async (node?: ChangeNode) => {
     if (node) await vscode.commands.executeCommand('vscode.open', node.change.uri);
   });

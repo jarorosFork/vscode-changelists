@@ -81,6 +81,22 @@ export class GitService {
   }
 
   /**
+   * Discard local changes for the given files, restoring them to HEAD
+   * (`git clean`/`git checkout`). For untracked files this deletes them.
+   * Mirrors JetBrains "Rollback". Irreversible.
+   */
+  async discardChanges(fsPaths: string[]): Promise<void> {
+    const repo = this.repository;
+    if (!repo || fsPaths.length === 0) return;
+    // Unstage first so clean restores both index and working tree to HEAD.
+    const staged = repo.state.indexChanges
+      .map((c) => c.uri.fsPath)
+      .filter((p) => fsPaths.includes(p));
+    if (staged.length) await repo.revert(staged);
+    await repo.clean(fsPaths);
+  }
+
+  /**
    * Start tracking untracked files without staging them (`git add -N`).
    * The file then shows up as an intent-to-add change, so it can be placed in
    * a changelist and committed — mirrors JetBrains "Add to VCS".

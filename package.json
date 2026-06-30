@@ -2,7 +2,7 @@
   "name": "vscode-changelists",
   "displayName": "Git Changelists",
   "description": "JetBrains-style git changelists for VSCode. Group working-tree changes into changelists and commit only the ones you choose.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "jaroros",
   "license": "MIT",
   "repository": {
@@ -91,6 +91,18 @@
         "icon": "$(check-all)"
       },
       {
+        "command": "changelists.rollbackChangelist",
+        "title": "Rollback Changelist...",
+        "category": "Changelists",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "changelists.rollbackChange",
+        "title": "Rollback...",
+        "category": "Changelists",
+        "icon": "$(discard)"
+      },
+      {
         "command": "changelists.openChange",
         "title": "Open Change",
         "category": "Changelists"
@@ -126,6 +138,11 @@
           "group": "1_actions@2"
         },
         {
+          "command": "changelists.rollbackChangelist",
+          "when": "view == changelists.view && viewItem == changelist",
+          "group": "1_actions@3"
+        },
+        {
           "command": "changelists.renameChangelist",
           "when": "view == changelists.view && viewItem == changelist",
           "group": "2_edit@1"
@@ -146,6 +163,16 @@
           "group": "1_actions@1"
         },
         {
+          "command": "changelists.rollbackChange",
+          "when": "view == changelists.view && viewItem == change",
+          "group": "inline@2"
+        },
+        {
+          "command": "changelists.rollbackChange",
+          "when": "view == changelists.view && viewItem == change",
+          "group": "1_actions@2"
+        },
+        {
           "command": "changelists.addToChangelist",
           "when": "view == changelists.view && viewItem == unversioned-change",
           "group": "inline@1"
@@ -154,6 +181,11 @@
           "command": "changelists.addToChangelist",
           "when": "view == changelists.view && viewItem == unversioned-change",
           "group": "1_actions@1"
+        },
+        {
+          "command": "changelists.rollbackChange",
+          "when": "view == changelists.view && viewItem == unversioned-change",
+          "group": "1_actions@2"
         }
       ]
     }

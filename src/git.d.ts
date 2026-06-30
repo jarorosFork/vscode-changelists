@@ -46,5 +46,6 @@ export interface Repository {
   readonly state: RepositoryState;
   add(resources: string[]): Promise<void>;
   revert(resources: string[]): Promise<void>;
+  clean(paths: string[]): Promise<void>;
   commit(message: string, opts?: { all?: boolean }): Promise<void>;
 }
