@@ -27,7 +27,10 @@ written into the repository.
      multi-select) and drag them onto a changelist; or
    - Right-click a file → **Move to Changelist…**.
 5. Right-click a changelist → **Commit Changelist…** (or use the inline check-all
-   icon) to commit only that changelist's files.
+   icon, or the **Commit** button in the view title bar) to open the commit
+   dialog: a checkable file list (uncheck to leave a file out of this commit),
+   a multi-line commit message, an **Amend previous commit** option, and
+   click-to-diff on any file. ⌘/Ctrl+Enter commits.
 6. Right-click a changelist → **Set as Active** to make new changes land there.
 
 ## Develop / run

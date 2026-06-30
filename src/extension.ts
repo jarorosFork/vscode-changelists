@@ -2,9 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ChangelistManager, DEFAULT_CHANGELIST } from './changelistManager';
-import { GitService } from './gitService';
+import { GitService, WorkingChange } from './gitService';
 import { ChangelistTreeProvider, ChangelistNode, ChangeNode } from './treeProvider';
 import { Status } from './git';
+import { CommitPanel } from './commitPanel';
 
 export async function activate(context: vscode.ExtensionContext) {
   const git = new GitService();
@@ -107,19 +108,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage(`Changelist "${name}" has no files to commit.`);
       return;
     }
-    const message = await vscode.window.showInputBox({
-      prompt: `Commit message for "${name}" (${changes.length} file${changes.length === 1 ? '' : 's'})`,
-      placeHolder: 'Commit message',
-      validateInput: (v) => (v.trim() ? undefined : 'A commit message is required'),
-    });
-    if (!message) return;
-    try {
-      await git.commitFiles(changes.map((c) => c.fsPath), message);
-      vscode.window.showInformationMessage(`Committed ${changes.length} file(s) from "${name}".`);
-      provider.refresh();
-    } catch (err) {
-      vscode.window.showErrorMessage(`Commit failed: ${(err as Error).message}`);
-    }
+    CommitPanel.show(git, () => provider.refresh(), name, changes);
   });
 
   reg('changelists.rollbackChangelist', async (node?: ChangelistNode) => {
@@ -157,15 +146,25 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   reg('changelists.showDiff', async (node?: ChangeNode) => {
-    if (!node) return;
-    const uri = node.change.uri;
+    if (node) await openDiff(node.change);
+  });
+
+  // Same as showDiff, but keyed by fsPath — used by the commit panel webview,
+  // which only knows file paths, not ChangeNode instances.
+  reg('changelists.showDiffPath', async (fsPath: string) => {
+    const change = git.getChanges().find((c) => c.fsPath === fsPath);
+    if (change) await openDiff(change);
+  });
+
+  async function openDiff(change: WorkingChange) {
+    const uri = change.uri;
     // Untracked files have no HEAD version to diff against — just open them.
-    if (node.change.untracked) {
+    if (change.untracked) {
       await vscode.commands.executeCommand('vscode.open', uri);
       return;
     }
     const name = path.basename(uri.fsPath);
-    const noHead = !hasHeadVersion(node.change.status); // added/renamed: nothing at HEAD
+    const noHead = !hasHeadVersion(change.status); // added/renamed: nothing at HEAD
     const noWorktree = !fs.existsSync(uri.fsPath); // deleted: nothing on disk
 
     // Pick a real source per side, falling back to empty where the file doesn't exist.
@@ -173,7 +172,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const right = noWorktree ? gitEmptyUri(uri) : uri;
     const suffix = noHead ? '(Added)' : noWorktree ? '(Deleted)' : '(Working Tree ↔ HEAD)';
     await vscode.commands.executeCommand('vscode.diff', left, right, `${name} ${suffix}`);
-  });
+  }
 
   reg('changelists.openChange', async (node?: ChangeNode) => {
     if (!node) return;

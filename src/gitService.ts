@@ -67,17 +67,33 @@ export class GitService {
    * Commit only the given files. Mirrors JetBrains: stage exactly these paths,
    * leave everything else untouched, commit, done.
    */
-  async commitFiles(fsPaths: string[], message: string): Promise<void> {
+  async commitFiles(fsPaths: string[], message: string, opts?: { amend?: boolean }): Promise<void> {
     const repo = this.repository;
     if (!repo) throw new Error('No git repository found.');
-    if (fsPaths.length === 0) throw new Error('No files to commit in this changelist.');
+    // Amending with zero files just rewords the previous commit; otherwise a
+    // commit needs at least one file.
+    if (fsPaths.length === 0 && !opts?.amend) {
+      throw new Error('No files to commit in this changelist.');
+    }
 
     // Unstage everything first so other changelists never sneak into the commit.
     const allStaged = repo.state.indexChanges.map((c) => c.uri.fsPath);
     if (allStaged.length) await repo.revert(allStaged);
 
-    await repo.add(fsPaths);
-    await repo.commit(message);
+    if (fsPaths.length) await repo.add(fsPaths);
+    await repo.commit(message, { amend: opts?.amend });
+  }
+
+  /** The message of the most recent commit, used to prefill "amend". */
+  async lastCommitMessage(): Promise<string | undefined> {
+    const repo = this.repository;
+    if (!repo) return undefined;
+    try {
+      const [last] = await repo.log({ maxEntries: 1 });
+      return last?.message;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

@@ -47,5 +47,6 @@ export interface Repository {
   add(resources: string[]): Promise<void>;
   revert(resources: string[]): Promise<void>;
   clean(paths: string[]): Promise<void>;
-  commit(message: string, opts?: { all?: boolean }): Promise<void>;
+  commit(message: string, opts?: { all?: boolean; amend?: boolean }): Promise<void>;
+  log(opts?: { maxEntries?: number }): Promise<{ message: string }[]>;
 }
