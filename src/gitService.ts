@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { API, GitExtension, Repository, Change, Status } from './git';
+
+const execFileAsync = promisify(execFile);
 
 export interface WorkingChange {
   uri: vscode.Uri;
   fsPath: string;
   status: Status;
   staged: boolean;
+  untracked: boolean;
 }
 
 export class GitService {
@@ -40,7 +45,7 @@ export class GitService {
     const repo = this.repository;
     if (!repo) return [];
     const out = new Map<string, WorkingChange>();
-    const add = (c: Change, staged: boolean) => {
+    const add = (c: Change, staged: boolean, untracked = false) => {
       const fsPath = c.uri.fsPath;
       // index entry wins for status display but we keep "staged" if either says so
       const prev = out.get(fsPath);
@@ -49,11 +54,12 @@ export class GitService {
         fsPath,
         status: prev ? prev.status : c.status,
         staged: staged || (prev?.staged ?? false),
+        untracked: untracked || (prev?.untracked ?? false),
       });
     };
     repo.state.indexChanges.forEach((c) => add(c, true));
     repo.state.workingTreeChanges.forEach((c) => add(c, false));
-    repo.state.untrackedChanges.forEach((c) => add(c, false));
+    repo.state.untrackedChanges.forEach((c) => add(c, false, true));
     return [...out.values()].sort((a, b) => a.fsPath.localeCompare(b.fsPath));
   }
 
@@ -72,5 +78,18 @@ export class GitService {
 
     await repo.add(fsPaths);
     await repo.commit(message);
+  }
+
+  /**
+   * Start tracking untracked files without staging them (`git add -N`).
+   * The file then shows up as an intent-to-add change, so it can be placed in
+   * a changelist and committed — mirrors JetBrains "Add to VCS".
+   */
+  async intentToAdd(fsPaths: string[]): Promise<void> {
+    const repo = this.repository;
+    if (!repo || fsPaths.length === 0) return;
+    await execFileAsync('git', ['add', '-N', '--', ...fsPaths], {
+      cwd: repo.rootUri.fsPath,
+    });
   }
 }

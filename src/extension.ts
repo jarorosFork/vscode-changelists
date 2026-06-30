@@ -60,24 +60,31 @@ export async function activate(context: vscode.ExtensionContext) {
     if (node) manager.setActive(node.name);
   });
 
-  reg('changelists.moveToChangelist', async (node?: ChangeNode) => {
-    if (!node) return;
-    const others = manager.getChangelists().filter((n) => n !== node.changelist);
-    const items: vscode.QuickPickItem[] = [
-      ...others.map((n) => ({ label: n })),
-      { label: '$(add) New changelist...', alwaysShow: true },
-    ];
-    const picked = await vscode.window.showQuickPick(items, {
-      placeHolder: `Move "${node.label}" to changelist`,
-    });
-    if (!picked) return;
-    let target = picked.label;
-    if (target.includes('New changelist')) {
-      const name = await vscode.window.showInputBox({ prompt: 'New changelist name' });
-      if (!name || !manager.createChangelist(name)) return;
-      target = name.trim();
+  reg('changelists.moveToChangelist', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
+    const selected = selection(node, nodes).filter((n) => !n.change.untracked);
+    if (selected.length === 0) return;
+    const target = await chooseTarget(
+      manager,
+      `Move ${describe(selected)} to changelist`,
+      selected.length === 1 ? selected[0].changelist : undefined,
+    );
+    if (!target) return;
+    for (const n of selected) manager.moveToChangelist(n.change.fsPath, target);
+  });
+
+  reg('changelists.addToChangelist', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
+    const selected = selection(node, nodes).filter((n) => n.change.untracked);
+    if (selected.length === 0) return;
+    const target = await chooseTarget(manager, `Add ${describe(selected)} to changelist`);
+    if (!target) return;
+    try {
+      const paths = selected.map((n) => n.change.fsPath);
+      await git.intentToAdd(paths);
+      for (const p of paths) manager.moveToChangelist(p, target);
+      provider.refresh();
+    } catch (err) {
+      vscode.window.showErrorMessage(`Add to changelist failed: ${(err as Error).message}`);
     }
-    manager.moveToChangelist(node.change.fsPath, target);
   });
 
   reg('changelists.commitChangelist', async (node?: ChangelistNode) => {
@@ -85,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (!name) return;
     const changes = git
       .getChanges()
-      .filter((c) => manager.changelistOf(c.fsPath) === name);
+      .filter((c) => !c.untracked && manager.changelistOf(c.fsPath) === name);
     if (changes.length === 0) {
       vscode.window.showInformationMessage(`Changelist "${name}" has no files to commit.`);
       return;
@@ -110,10 +117,43 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 }
 
+/** Resolve the set of nodes a context-menu command acts on (supports multi-select). */
+function selection(node?: ChangeNode, nodes?: ChangeNode[]): ChangeNode[] {
+  const list = (nodes && nodes.length ? nodes : node ? [node] : []).filter(
+    (n): n is ChangeNode => n instanceof ChangeNode,
+  );
+  return list;
+}
+
+function describe(selected: ChangeNode[]): string {
+  return selected.length === 1 ? `"${selected[0].label}"` : `${selected.length} files`;
+}
+
 async function pickChangelist(manager: ChangelistManager): Promise<string | undefined> {
   return vscode.window.showQuickPick(manager.getChangelists(), {
     placeHolder: 'Select a changelist to commit',
   });
+}
+
+/**
+ * Prompt for a target changelist, offering an inline "New changelist..." option
+ * that creates one on the fly. Returns the chosen/created name, or undefined.
+ */
+async function chooseTarget(
+  manager: ChangelistManager,
+  placeHolder: string,
+  exclude?: string,
+): Promise<string | undefined> {
+  const names = manager.getChangelists().filter((n) => n !== exclude);
+  const picked = await vscode.window.showQuickPick(
+    [...names.map((label) => ({ label })), { label: '$(add) New changelist...', alwaysShow: true }],
+    { placeHolder },
+  );
+  if (!picked) return undefined;
+  if (!picked.label.includes('New changelist')) return picked.label;
+  const name = await vscode.window.showInputBox({ prompt: 'New changelist name' });
+  if (!name || !manager.createChangelist(name)) return undefined;
+  return name.trim();
 }
 
 export function deactivate() {}

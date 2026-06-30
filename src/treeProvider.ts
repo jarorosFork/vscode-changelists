@@ -14,10 +14,23 @@ export class ChangelistNode extends vscode.TreeItem {
   }
 }
 
+export const UNVERSIONED = 'Unversioned Files';
+
+export class UnversionedNode extends vscode.TreeItem {
+  constructor(count: number) {
+    super(UNVERSIONED, vscode.TreeItemCollapsibleState.Collapsed);
+    this.contextValue = 'unversioned';
+    this.iconPath = new vscode.ThemeIcon('question');
+    this.description = `${count} file${count === 1 ? '' : 's'}`;
+    this.tooltip = 'Untracked files — not part of any changelist and not committed.';
+  }
+}
+
 export class ChangeNode extends vscode.TreeItem {
   constructor(public readonly change: WorkingChange, public readonly changelist: string) {
     super(path.basename(change.fsPath), vscode.TreeItemCollapsibleState.None);
-    this.contextValue = 'change';
+    // Untracked files live in their own section and cannot be moved into a changelist.
+    this.contextValue = change.untracked ? 'unversioned-change' : 'change';
     this.resourceUri = change.uri;
     this.description = vscode.workspace.asRelativePath(path.dirname(change.fsPath));
     this.tooltip = change.fsPath;
@@ -74,18 +87,21 @@ export class ChangelistTreeProvider
     return element;
   }
 
-  /** All changes grouped by their changelist. */
-  private group(): Map<string, WorkingChange[]> {
+  /** Tracked changes grouped by changelist, plus untracked files kept apart. */
+  private group(): { groups: Map<string, WorkingChange[]>; untracked: WorkingChange[] } {
     const changes = this.git.getChanges();
-    this.manager.prune(new Set(changes.map((c) => c.fsPath)));
+    const tracked = changes.filter((c) => !c.untracked);
+    const untracked = changes.filter((c) => c.untracked);
+    // Only tracked files are ever assigned to changelists.
+    this.manager.prune(new Set(tracked.map((c) => c.fsPath)));
     const groups = new Map<string, WorkingChange[]>();
     for (const name of this.manager.getChangelists()) groups.set(name, []);
-    for (const change of changes) {
+    for (const change of tracked) {
       const cl = this.manager.changelistOf(change.fsPath);
       if (!groups.has(cl)) groups.set(cl, []);
       groups.get(cl)!.push(change);
     }
-    return groups;
+    return { groups, untracked };
   }
 
   getChildren(element?: vscode.TreeItem): vscode.TreeItem[] {
@@ -93,15 +109,21 @@ export class ChangelistTreeProvider
       const item = new vscode.TreeItem('No git repository in this workspace');
       return element ? [] : [item];
     }
-    const groups = this.group();
+    const { groups, untracked } = this.group();
     if (!element) {
       const active = this.manager.getActive();
-      return this.manager
+      const nodes: vscode.TreeItem[] = this.manager
         .getChangelists()
         .map((name) => new ChangelistNode(name, name === active, groups.get(name)?.length ?? 0));
+      // "Unversioned Files" always sorts last, and only shows when non-empty.
+      if (untracked.length) nodes.push(new UnversionedNode(untracked.length));
+      return nodes;
     }
     if (element instanceof ChangelistNode) {
       return (groups.get(element.name) ?? []).map((c) => new ChangeNode(c, element.name));
+    }
+    if (element instanceof UnversionedNode) {
+      return untracked.map((c) => new ChangeNode(c, UNVERSIONED));
     }
     return [];
   }
@@ -109,9 +131,9 @@ export class ChangelistTreeProvider
   // --- Drag and drop ---------------------------------------------------------
 
   handleDrag(source: readonly vscode.TreeItem[], data: vscode.DataTransfer): void {
-    // Only files can be dragged; carry their fsPaths.
+    // Only tracked files can be dragged; untracked ones stay in their own section.
     const paths = source
-      .filter((item): item is ChangeNode => item instanceof ChangeNode)
+      .filter((item): item is ChangeNode => item instanceof ChangeNode && !item.change.untracked)
       .map((item) => item.change.fsPath);
     if (paths.length) data.set(MIME, new vscode.DataTransferItem(paths));
   }
