@@ -38,6 +38,15 @@ export async function activate(context: vscode.ExtensionContext) {
   reg('changelists.refresh', () => provider.refresh());
 
   reg('changelists.pull', async () => {
+    if (!git.hasUpstream) {
+      const branch = git.currentBranch;
+      vscode.window.showInformationMessage(
+        branch
+          ? `"${branch}" has no upstream branch yet — there's nothing to pull until you push it.`
+          : 'Current branch has no upstream branch yet — push it first.',
+      );
+      return;
+    }
     try {
       await git.pull();
       provider.refresh();
