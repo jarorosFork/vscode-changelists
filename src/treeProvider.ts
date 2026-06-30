@@ -36,8 +36,8 @@ export class ChangeNode extends vscode.TreeItem {
     this.tooltip = change.fsPath;
     this.iconPath = letterIcon(change.status);
     this.command = {
-      command: 'changelists.openChange',
-      title: 'Open Change',
+      command: 'changelists.showDiff',
+      title: 'Show Diff',
       arguments: [this],
     };
   }

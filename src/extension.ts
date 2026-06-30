@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ChangelistManager, DEFAULT_CHANGELIST } from './changelistManager';
 import { GitService } from './gitService';
 import { ChangelistTreeProvider, ChangelistNode, ChangeNode } from './treeProvider';
@@ -145,6 +146,19 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.showErrorMessage(`Rollback failed: ${(err as Error).message}`);
     }
   }
+
+  reg('changelists.showDiff', async (node?: ChangeNode) => {
+    if (!node) return;
+    const uri = node.change.uri;
+    // Untracked files have no HEAD version to diff against — just open them.
+    if (node.change.untracked) {
+      await vscode.commands.executeCommand('vscode.open', uri);
+      return;
+    }
+    const head = uri.with({ scheme: 'git', query: JSON.stringify({ path: uri.fsPath, ref: 'HEAD' }) });
+    const title = `${path.basename(uri.fsPath)} (Working Tree ↔ HEAD)`;
+    await vscode.commands.executeCommand('vscode.diff', head, uri, title);
+  });
 
   reg('changelists.openChange', async (node?: ChangeNode) => {
     if (node) await vscode.commands.executeCommand('vscode.open', node.change.uri);
