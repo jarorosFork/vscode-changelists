@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { API, GitExtension, Repository, Change, Status } from './git';
+import { Status } from './git';
+import type { API, GitExtension, Repository, Change } from './git';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,7 +46,7 @@ export class GitService {
     const repo = this.repository;
     if (!repo) return [];
     const out = new Map<string, WorkingChange>();
-    const add = (c: Change, staged: boolean, untracked = false) => {
+    const add = (c: Change, staged: boolean) => {
       const fsPath = c.uri.fsPath;
       // index entry wins for status display but we keep "staged" if either says so
       const prev = out.get(fsPath);
@@ -54,12 +55,17 @@ export class GitService {
         fsPath,
         status: prev ? prev.status : c.status,
         staged: staged || (prev?.staged ?? false),
-        untracked: untracked || (prev?.untracked ?? false),
+        // Derived from the change's own status, NOT from which state array it
+        // came from: when the "git.untrackedChanges" setting is "mixed" (the
+        // VSCode default), untracked files are reported via workingTreeChanges
+        // rather than untrackedChanges, so relying on the array would silently
+        // misclassify them as tracked.
+        untracked: c.status === Status.UNTRACKED || (prev?.untracked ?? false),
       });
     };
     repo.state.indexChanges.forEach((c) => add(c, true));
     repo.state.workingTreeChanges.forEach((c) => add(c, false));
-    repo.state.untrackedChanges.forEach((c) => add(c, false, true));
+    repo.state.untrackedChanges.forEach((c) => add(c, false));
     return [...out.values()].sort((a, b) => a.fsPath.localeCompare(b.fsPath));
   }
 
