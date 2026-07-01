@@ -54,6 +54,9 @@ load.
    dialog: a checkable file list (uncheck to leave a file out of this commit),
    a multi-line commit message, an **Amend previous commit** option, and
    click-to-diff on any file. ⌘/Ctrl+Enter commits.
+   - Right-click a changelist → **Show Diff** (or the inline multi-diff icon)
+     to open every changed file in that changelist at once, in VSCode's
+     multi-file changes editor — the same view used for reviewing a commit.
 7. Right-click a changelist → **Set as Active** to make new changes land there.
 
 ## Develop / run

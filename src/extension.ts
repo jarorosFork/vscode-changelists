@@ -234,6 +234,26 @@ export async function activate(context: vscode.ExtensionContext) {
     await rollback(changes, `all ${changes.length} change(s) in "${name}"`);
   });
 
+  reg('changelists.showChangelistDiff', async (node?: ChangelistNode) => {
+    const name = node?.name ?? (await pickChangelist(manager));
+    if (!name) return;
+    const changes = git
+      .getChanges()
+      .filter((c) => !c.untracked && manager.changelistOf(c.fsPath) === name);
+    if (changes.length === 0) {
+      vscode.window.showInformationMessage(`Changelist "${name}" has no changes to show.`);
+      return;
+    }
+    // [label, left, right] per file — undefined sides render natively as
+    // added/deleted in the multi-file changes editor, no empty-content hack needed.
+    const resources: [vscode.Uri, vscode.Uri | undefined, vscode.Uri | undefined][] = changes.map((c) => [
+      c.uri,
+      hasHeadVersion(c.status) ? gitHeadUri(c.uri) : undefined,
+      fs.existsSync(c.fsPath) ? c.uri : undefined,
+    ]);
+    await vscode.commands.executeCommand('vscode.changes', `Changes in "${name}"`, resources);
+  });
+
   reg('changelists.rollbackChange', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
     const selected = selection(node, nodes);
     if (selected.length === 0) return;
