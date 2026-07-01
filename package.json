@@ -2,7 +2,7 @@
   "name": "vscode-changelists",
   "displayName": "Git Changelists",
   "description": "JetBrains-style git changelists for VSCode. Group working-tree changes into changelists and commit only the ones you choose.",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "publisher": "jaroros",
   "license": "MIT",
   "repository": {
@@ -199,17 +199,17 @@
         },
         {
           "command": "changelists.showDiff",
-          "when": "view == changelists.view && viewItem =~ /change/",
+          "when": "view == changelists.view && (viewItem == change || viewItem == unversioned-change)",
           "group": "inline@0"
         },
         {
           "command": "changelists.showDiff",
-          "when": "view == changelists.view && viewItem =~ /change/",
+          "when": "view == changelists.view && (viewItem == change || viewItem == unversioned-change)",
           "group": "3_open@1"
         },
         {
           "command": "changelists.openChange",
-          "when": "view == changelists.view && viewItem =~ /change/",
+          "when": "view == changelists.view && (viewItem == change || viewItem == unversioned-change)",
           "group": "3_open@2"
         },
         {

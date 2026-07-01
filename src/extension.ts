@@ -256,7 +256,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   reg('changelists.showDiff', async (node?: ChangeNode) => {
-    if (node) await openDiff(node.change);
+    if (node?.change) await openDiff(node.change);
   });
 
   // Same as showDiff, but keyed by fsPath — used by the commit panel webview,
@@ -285,7 +285,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   reg('changelists.openChange', async (node?: ChangeNode) => {
-    if (!node) return;
+    if (!node?.change) return;
     const uri = node.change.uri;
     // A deleted file has nothing to open in the working tree — show HEAD read-only.
     if (!node.change.untracked && !fs.existsSync(uri.fsPath)) {
