@@ -181,6 +181,16 @@ export async function activate(context: vscode.ExtensionContext) {
     if (node) manager.setActive(node.name);
   });
 
+  reg('changelists.commitSelected', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
+    const selected = selection(node, nodes).filter((n) => !n.change.untracked);
+    if (selected.length === 0) return;
+    // Never reuse a bare changelist name here — that would look identical to
+    // a full "Commit Changelist..." even though this may be a subset of it.
+    const title =
+      selected.length === 1 ? path.basename(selected[0].change.fsPath) : `${selected.length} selected files`;
+    CommitPanel.show(git, () => provider.refresh(), title, selected.map((n) => n.change));
+  });
+
   reg('changelists.moveToChangelist', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
     const selected = selection(node, nodes).filter((n) => !n.change.untracked);
     if (selected.length === 0) return;

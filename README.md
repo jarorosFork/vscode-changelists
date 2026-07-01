@@ -57,6 +57,10 @@ load.
    - Right-click a changelist → **Show Diff** (or the inline multi-diff icon)
      to open every changed file in that changelist at once, in VSCode's
      multi-file changes editor — the same view used for reviewing a commit.
+   - Want to commit just one file, or a handful, without touching the rest of
+     the changelist? Select the file(s) (Cmd/Ctrl- or Shift-click for
+     multi-select) → right-click → **Commit Selected...** — opens the same
+     commit dialog, scoped to just what you selected.
 7. Right-click a changelist → **Set as Active** to make new changes land there.
 
 ## Develop / run
