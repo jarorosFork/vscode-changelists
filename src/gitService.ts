@@ -106,8 +106,12 @@ export class GitService {
     return this.repository?.state.HEAD?.name;
   }
 
+  get upstream(): { remote: string; name: string } | undefined {
+    return this.repository?.state.HEAD?.upstream;
+  }
+
   get hasUpstream(): boolean {
-    return !!this.repository?.state.HEAD?.upstream;
+    return !!this.upstream;
   }
 
   get remoteNames(): string[] {

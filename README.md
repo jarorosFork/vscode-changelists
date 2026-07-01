@@ -27,6 +27,12 @@ load.
 1. Use the **Pull** / **Push** buttons in the view title bar to sync with the
    remote. Pushing a branch with no upstream yet prompts you to pick a remote
    and sets it up automatically.
+   - Pull always fetches, then explicitly **merges** or **rebases** onto your
+     upstream — it never runs plain `git pull`, so it never hits git's
+     "you have divergent branches, please reconcile" prompt. Which one it
+     uses is the **`changelists.pullStrategy`** setting (`merge` by default),
+     equivalent to JetBrains' "Update Method". Change it in Settings if you
+     prefer rebase.
    - Working on a feature branch and want to catch up with `main`? Use the
      **`...`** menu → **Update from Branch...** — pick the branch (local or
      remote, e.g. `origin/main`), then **Merge** or **Rebase**. It fetches the

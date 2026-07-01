@@ -38,7 +38,8 @@ export async function activate(context: vscode.ExtensionContext) {
   reg('changelists.refresh', () => provider.refresh());
 
   reg('changelists.pull', async () => {
-    if (!git.hasUpstream) {
+    const upstream = git.upstream;
+    if (!upstream) {
       const branch = git.currentBranch;
       vscode.window.showInformationMessage(
         branch
@@ -47,12 +48,26 @@ export async function activate(context: vscode.ExtensionContext) {
       );
       return;
     }
+    // Never call plain "git pull": with no pull.rebase/pull.ff configured,
+    // git refuses with "you have divergent branches, please reconcile" the
+    // moment histories diverge. Instead fetch, then explicitly merge or
+    // rebase per the configured strategy — same as JetBrains' "Update Method"
+    // setting, so there's never an ambiguous state to hit.
+    const strategy = vscode.workspace
+      .getConfiguration('changelists')
+      .get<'merge' | 'rebase'>('pullStrategy', 'merge');
+    const ref = `${upstream.remote}/${upstream.name}`;
     try {
-      await git.pull();
+      await git.fetch(upstream.remote, upstream.name);
+      if (strategy === 'rebase') await git.rebaseOnto(ref);
+      else await git.mergeRef(ref);
       provider.refresh();
-      vscode.window.showInformationMessage('Pull complete.');
+      vscode.window.showInformationMessage(`Pulled (${strategy}) from ${ref}.`);
     } catch (err) {
-      vscode.window.showErrorMessage(`Pull failed: ${(err as Error).message}`);
+      vscode.window.showErrorMessage(
+        `Pull failed: ${(err as Error).message}. If there are conflicts, resolve them in the Source ` +
+          `Control view, then use "Continue" (rebase) or commit (merge) to finish.`,
+      );
     }
   });
 

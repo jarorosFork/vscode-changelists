@@ -2,7 +2,7 @@
   "name": "vscode-changelists",
   "displayName": "Git Changelists",
   "description": "JetBrains-style git changelists for VSCode. Group working-tree changes into changelists and commit only the ones you choose.",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "publisher": "jaroros",
   "license": "MIT",
   "repository": {
@@ -40,6 +40,21 @@
           "contextualTitle": "Changelists"
         }
       ]
+    },
+    "configuration": {
+      "title": "Changelists",
+      "properties": {
+        "changelists.pullStrategy": {
+          "type": "string",
+          "enum": ["merge", "rebase"],
+          "enumDescriptions": [
+            "Merge the incoming changes into the current branch (creates a merge commit if diverged).",
+            "Rebase the current branch on top of the incoming changes (linear history, rewrites local commits)."
+          ],
+          "default": "merge",
+          "description": "How the Pull button reconciles your branch with its upstream when they've diverged. Equivalent to JetBrains' \"Update Method\" setting — Pull always fetches then explicitly merges or rebases, so it never depends on your global git pull.rebase/pull.ff configuration."
+        }
+      }
     },
     "commands": [
       {
