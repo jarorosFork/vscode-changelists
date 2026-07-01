@@ -136,20 +136,25 @@ export class ChangelistTreeProvider
   handleDrag(source: readonly vscode.TreeItem[], data: vscode.DataTransfer): void {
     const items = source
       .filter((item): item is ChangeNode => item instanceof ChangeNode)
-      .map((item) => ({ fsPath: item.change.fsPath, untracked: item.change.untracked }));
+      .map((item) => ({ fsPath: item.change.fsPath, untracked: item.change.untracked, status: item.change.status }));
     if (items.length) data.set(MIME, new vscode.DataTransferItem(items));
   }
 
   async handleDrop(target: vscode.TreeItem | undefined, data: vscode.DataTransfer): Promise<void> {
     const item = data.get(MIME);
     if (!item) return;
-    const list = item.value as { fsPath: string; untracked: boolean }[];
+    const list = item.value as { fsPath: string; untracked: boolean; status: Status }[];
     if (!Array.isArray(list) || list.length === 0) return;
 
-    // "Unversioned Files" isn't a real changelist — dropping on it or one of
-    // its rows isn't a valid move.
-    if (target instanceof UnversionedNode) return;
-    if (target instanceof ChangeNode && target.changelist === UNVERSIONED) return;
+    // Dropping on "Unversioned Files" (or one of its rows) reverts newly-added
+    // files back to untracked — the mirror image of dragging an untracked
+    // file into a changelist.
+    const droppedOnUnversioned =
+      target instanceof UnversionedNode || (target instanceof ChangeNode && target.changelist === UNVERSIONED);
+    if (droppedOnUnversioned) {
+      await this.moveToUnversioned(list);
+      return;
+    }
 
     // Resolve the destination changelist from whatever was dropped on.
     let destination: string | undefined;
@@ -170,5 +175,27 @@ export class ChangelistTreeProvider
       }
     }
     for (const i of list) this.manager.moveToChangelist(i.fsPath, destination);
+  }
+
+  private async moveToUnversioned(list: { fsPath: string; untracked: boolean; status: Status }[]) {
+    // Only newly-added files (no HEAD version) can cleanly become untracked
+    // again via a plain unstage. A modified/renamed/deleted file has real
+    // history — unstaging it would not make it untracked, just unstaged.
+    const isNewlyAdded = (s: Status) => s === Status.INDEX_ADDED || s === Status.INTENT_TO_ADD;
+    const revertible = list.filter((i) => !i.untracked && isNewlyAdded(i.status)).map((i) => i.fsPath);
+    const ineligible = list.filter((i) => !i.untracked && !isNewlyAdded(i.status));
+
+    if (ineligible.length) {
+      const names = ineligible.map((i) => path.basename(i.fsPath)).join(', ');
+      vscode.window.showWarningMessage(
+        `Only newly-added files can move to Unversioned Files: ${names} already has commit history.`,
+      );
+    }
+    if (revertible.length === 0) return;
+    try {
+      await this.git.unstage(revertible);
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to unstage file(s): ${(err as Error).message}`);
+    }
   }
 }

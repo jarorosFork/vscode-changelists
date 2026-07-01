@@ -192,4 +192,15 @@ export class GitService {
       cwd: repo.rootUri.fsPath,
     });
   }
+
+  /**
+   * Inverse of intentToAdd: unstage a newly-added file (INDEX_ADDED or
+   * INTENT_TO_ADD, i.e. no HEAD version) so it reverts to untracked — mirrors
+   * dragging a file back out to "Unversioned Files".
+   */
+  async unstage(fsPaths: string[]): Promise<void> {
+    const repo = this.repository;
+    if (!repo || fsPaths.length === 0) return;
+    await repo.revert(fsPaths);
+  }
 }

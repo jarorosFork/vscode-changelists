@@ -43,8 +43,12 @@ load.
 
    Dragging an **untracked** file out of Unversioned Files onto a changelist
    adds it to version control first (`git add -N`), same as right-click →
-   **Add to Changelist…**. Unversioned Files itself isn't a valid drop target —
-   files only leave it by being added.
+   **Add to Changelist…**. Conversely, dragging a newly-**added** file (status
+   `A`, not yet committed) onto Unversioned Files unstages it back to
+   untracked (status `U`). Files with real commit history (modified, renamed,
+   deleted) can't be moved to Unversioned Files this way — there's no way to
+   make a file with history "untracked" without rewriting history, so those
+   drops are rejected with an explanation.
 6. Right-click a changelist → **Commit Changelist…** (or use the inline check-all
    icon, or the **Commit** button in the view title bar) to open the commit
    dialog: a checkable file list (uncheck to leave a file out of this commit),

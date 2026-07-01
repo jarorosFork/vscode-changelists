@@ -2,7 +2,7 @@
   "name": "vscode-changelists",
   "displayName": "Git Changelists",
   "description": "JetBrains-style git changelists for VSCode. Group working-tree changes into changelists and commit only the ones you choose.",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "publisher": "jaroros",
   "license": "MIT",
   "repository": {
