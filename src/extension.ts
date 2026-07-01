@@ -88,6 +88,65 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  reg('changelists.updateFromBranch', async () => {
+    const current = git.currentBranch;
+    if (!current) {
+      vscode.window.showErrorMessage('Not currently on a branch.');
+      return;
+    }
+    const branches = await git.listBranches();
+    if (branches.length === 0) {
+      vscode.window.showInformationMessage('No other branches found.');
+      return;
+    }
+    // Float likely default branches (main/master) to the top of the picker.
+    const rank = (name: string) => {
+      const short = name.split('/').pop();
+      return short === 'main' || short === 'master' ? 0 : 1;
+    };
+    branches.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+
+    const branchPick = await vscode.window.showQuickPick(
+      branches.map((b) => ({
+        label: `${b.isRemote ? '$(cloud)' : '$(git-branch)'} ${b.name}`,
+        description: b.isRemote ? 'remote' : 'local',
+        ref: b.name,
+        isRemote: b.isRemote,
+      })),
+      { placeHolder: `Fetch and update "${current}" from…` },
+    );
+    if (!branchPick) return;
+
+    const modePick = await vscode.window.showQuickPick(
+      [
+        { label: 'Rebase', description: `Replay "${current}" on top of ${branchPick.ref}`, mode: 'rebase' as const },
+        { label: 'Merge', description: `Merge ${branchPick.ref} into "${current}"`, mode: 'merge' as const },
+      ],
+      { placeHolder: 'How do you want to update?' },
+    );
+    if (!modePick) return;
+
+    try {
+      if (branchPick.isRemote) {
+        const [remote, ...rest] = branchPick.ref.split('/');
+        await git.fetch(remote, rest.join('/'));
+      } else {
+        await git.fetch(); // refresh remote-tracking refs in case they're stale
+      }
+      if (modePick.mode === 'rebase') await git.rebaseOnto(branchPick.ref);
+      else await git.mergeRef(branchPick.ref);
+      provider.refresh();
+      const verb = modePick.mode === 'rebase' ? 'Rebased' : 'Merged';
+      vscode.window.showInformationMessage(`${verb} "${current}" onto ${branchPick.ref}.`);
+    } catch (err) {
+      const verb = modePick.mode === 'rebase' ? 'Rebase' : 'Merge';
+      vscode.window.showErrorMessage(
+        `${verb} failed: ${(err as Error).message}. If there are conflicts, resolve them in the ` +
+          `Source Control view, then use "Continue" (rebase) or commit (merge) to finish.`,
+      );
+    }
+  });
+
   reg('changelists.createChangelist', async () => {
     const name = await vscode.window.showInputBox({
       prompt: 'New changelist name',

@@ -43,6 +43,14 @@ export interface Branch {
   readonly upstream?: { readonly remote: string; readonly name: string };
 }
 
+export interface Ref {
+  readonly name?: string;
+}
+
+export interface BranchQuery {
+  readonly remote?: boolean;
+}
+
 export interface RepositoryState {
   readonly workingTreeChanges: Change[];
   readonly indexChanges: Change[];
@@ -62,4 +70,8 @@ export interface Repository {
   log(opts?: { maxEntries?: number }): Promise<{ message: string }[]>;
   pull(): Promise<void>;
   push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
+  fetch(remote?: string, ref?: string, depth?: number): Promise<void>;
+  merge(ref: string): Promise<void>;
+  rebase(branch: string): Promise<void>;
+  getBranches(query: BranchQuery): Promise<Ref[]>;
 }

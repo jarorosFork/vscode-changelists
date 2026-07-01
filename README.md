@@ -27,6 +27,12 @@ load.
 1. Use the **Pull** / **Push** buttons in the view title bar to sync with the
    remote. Pushing a branch with no upstream yet prompts you to pick a remote
    and sets it up automatically.
+   - Working on a feature branch and want to catch up with `main`? Use the
+     **`...`** menu → **Update from Branch...** — pick the branch (local or
+     remote, e.g. `origin/main`), then **Merge** or **Rebase**. It fetches the
+     latest first, so you always update against the remote's current state,
+     not a stale local copy. On conflicts, resolve them in the Source Control
+     view as usual, then continue (rebase) or commit (merge).
 2. Open the **Changelists** view in the activity bar (list-tree icon).
 3. All current changes appear under the active changelist (default: `Changes`).
 4. **New Changelist** (`+` in the view title) to create one.

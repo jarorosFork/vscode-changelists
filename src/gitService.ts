@@ -124,6 +124,40 @@ export class GitService {
     await repo.push(remoteName, branchName, setUpstream);
   }
 
+  /** Update remote-tracking refs (e.g. `origin/main`) without touching the working tree. */
+  async fetch(remote?: string, ref?: string): Promise<void> {
+    const repo = this.repository;
+    if (!repo) throw new Error('No git repository found.');
+    await repo.fetch(remote, ref);
+  }
+
+  /** Local and remote branches (excluding the current branch), for "update from" pickers. */
+  async listBranches(): Promise<{ name: string; isRemote: boolean }[]> {
+    const repo = this.repository;
+    if (!repo) return [];
+    const current = repo.state.HEAD?.name;
+    const [locals, remotes] = await Promise.all([
+      repo.getBranches({ remote: false }),
+      repo.getBranches({ remote: true }),
+    ]);
+    const out: { name: string; isRemote: boolean }[] = [];
+    for (const r of locals) if (r.name && r.name !== current) out.push({ name: r.name, isRemote: false });
+    for (const r of remotes) if (r.name) out.push({ name: r.name, isRemote: true });
+    return out;
+  }
+
+  async mergeRef(ref: string): Promise<void> {
+    const repo = this.repository;
+    if (!repo) throw new Error('No git repository found.');
+    await repo.merge(ref);
+  }
+
+  async rebaseOnto(ref: string): Promise<void> {
+    const repo = this.repository;
+    if (!repo) throw new Error('No git repository found.');
+    await repo.rebase(ref);
+  }
+
   /**
    * Discard local changes for the given files, restoring them to HEAD
    * (`git clean`/`git checkout`). For untracked files this deletes them.
