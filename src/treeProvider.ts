@@ -134,26 +134,41 @@ export class ChangelistTreeProvider
   // --- Drag and drop ---------------------------------------------------------
 
   handleDrag(source: readonly vscode.TreeItem[], data: vscode.DataTransfer): void {
-    // Only tracked files can be dragged; untracked ones stay in their own section.
-    const paths = source
-      .filter((item): item is ChangeNode => item instanceof ChangeNode && !item.change.untracked)
-      .map((item) => item.change.fsPath);
-    if (paths.length) data.set(MIME, new vscode.DataTransferItem(paths));
+    const items = source
+      .filter((item): item is ChangeNode => item instanceof ChangeNode)
+      .map((item) => ({ fsPath: item.change.fsPath, untracked: item.change.untracked }));
+    if (items.length) data.set(MIME, new vscode.DataTransferItem(items));
   }
 
   async handleDrop(target: vscode.TreeItem | undefined, data: vscode.DataTransfer): Promise<void> {
     const item = data.get(MIME);
     if (!item) return;
-    const list = item.value as string[];
+    const list = item.value as { fsPath: string; untracked: boolean }[];
     if (!Array.isArray(list) || list.length === 0) return;
+
+    // "Unversioned Files" isn't a real changelist — dropping on it or one of
+    // its rows isn't a valid move.
+    if (target instanceof UnversionedNode) return;
+    if (target instanceof ChangeNode && target.changelist === UNVERSIONED) return;
 
     // Resolve the destination changelist from whatever was dropped on.
     let destination: string | undefined;
     if (target instanceof ChangelistNode) destination = target.name;
     else if (target instanceof ChangeNode) destination = target.changelist;
     else destination = this.manager.getActive(); // dropped on empty space
-
     if (!destination) return;
-    for (const fsPath of list) this.manager.moveToChangelist(fsPath, destination);
+
+    // Dragging an untracked file into a changelist implicitly adds it to
+    // version control first (git add -N), same as "Add to Changelist...".
+    const untrackedPaths = list.filter((i) => i.untracked).map((i) => i.fsPath);
+    if (untrackedPaths.length) {
+      try {
+        await this.git.intentToAdd(untrackedPaths);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Failed to add file(s) to version control: ${(err as Error).message}`);
+        return;
+      }
+    }
+    for (const i of list) this.manager.moveToChangelist(i.fsPath, destination);
   }
 }

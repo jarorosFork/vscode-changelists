@@ -40,6 +40,11 @@ load.
    - **Drag and drop** — select one or more files (Cmd/Ctrl- or Shift-click for
      multi-select) and drag them onto a changelist; or
    - Right-click a file → **Move to Changelist…**.
+
+   Dragging an **untracked** file out of Unversioned Files onto a changelist
+   adds it to version control first (`git add -N`), same as right-click →
+   **Add to Changelist…**. Unversioned Files itself isn't a valid drop target —
+   files only leave it by being added.
 6. Right-click a changelist → **Commit Changelist…** (or use the inline check-all
    icon, or the **Commit** button in the view title bar) to open the commit
    dialog: a checkable file list (uncheck to leave a file out of this commit),
