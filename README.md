@@ -31,6 +31,10 @@ per repo (each persists to its own `<repo>/.git/changelists.json`). With a
 single repo open, the view stays flat exactly as before — no redundant
 top-level wrapper.
 
+Removing a folder from the workspace removes its node from the view
+immediately (its `changelists.json` is untouched on disk, so re-adding the
+folder later restores its changelists exactly as they were).
+
 Because **Pull**/**Push**/**New Changelist**/**Update from Branch** need to
 know *which* repo to act on, they move off the view's title bar and onto each
 folder's own row (inline icons + right-click) once there's more than one repo.

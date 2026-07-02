@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { API, GitExtension, Repository } from './git';
 import { Repo } from './repo';
 
@@ -34,6 +35,15 @@ export class GitService {
       this.removeRepo(r);
       this._onDidChangeRepos.fire();
     });
+    // The git extension normally closes a repository itself when its
+    // containing workspace folder is removed, which the listener above
+    // already handles via onDidCloseRepository. Don't rely solely on that,
+    // though — cross-check directly against the live workspace folder list
+    // so a removed folder's changelist disappears even if the git extension
+    // is slow to close it (or doesn't, for some edge-case repo layout).
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      if (this.pruneOrphanedRepos()) this._onDidChangeRepos.fire();
+    });
   }
 
   private addRepo(r: Repository) {
@@ -46,12 +56,34 @@ export class GitService {
     this.repoMap.delete(r);
   }
 
+  /** Drop any tracked repo whose root no longer falls under an open workspace folder. */
+  private pruneOrphanedRepos(): boolean {
+    const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+    let changed = false;
+    for (const [raw, repo] of this.repoMap) {
+      const stillOpen = folders.some(
+        (f) => repo.rootFsPath === f || repo.rootFsPath.startsWith(f + path.sep),
+      );
+      if (!stillOpen) {
+        this.removeRepo(raw);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   /** All open repositories, sorted by folder name for a stable display order. */
   get repos(): Repo[] {
     return [...this.repoMap.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  /** Fires when the repo set changes, or any open repo's own state changes. */
+  /**
+   * Fires when the repo set changes (open, close, or a removed workspace
+   * folder pruning a repo), or any currently-open repo's own state changes.
+   * Built on top of onDidChangeRepos rather than the raw git API events
+   * directly, so every path that can add/remove a repo — including the
+   * defensive workspace-folder prune above — reliably triggers a refresh.
+   */
   onDidChange(listener: () => void): vscode.Disposable {
     const stateDisposables: vscode.Disposable[] = [];
     const resubscribe = () => {
@@ -60,18 +92,13 @@ export class GitService {
       for (const repo of this.repoMap.keys()) stateDisposables.push(repo.state.onDidChange(listener));
     };
     resubscribe();
-    const openSub = this.api.onDidOpenRepository(() => {
-      resubscribe();
-      listener();
-    });
-    const closeSub = this.api.onDidCloseRepository(() => {
+    const reposSub = this.onDidChangeRepos(() => {
       resubscribe();
       listener();
     });
     return new vscode.Disposable(() => {
       stateDisposables.forEach((d) => d.dispose());
-      openSub.dispose();
-      closeSub.dispose();
+      reposSub.dispose();
     });
   }
 }
