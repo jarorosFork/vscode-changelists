@@ -1,14 +1,15 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ChangelistManager, DEFAULT_CHANGELIST } from './changelistManager';
-import { GitService, WorkingChange } from './gitService';
-import { ChangelistTreeProvider, ChangelistNode, ChangeNode } from './treeProvider';
+import { DEFAULT_CHANGELIST, ChangelistManager } from './changelistManager';
+import { GitService } from './gitService';
+import { Repo, WorkingChange } from './repo';
+import { ChangelistTreeProvider, RepoNode, ChangelistNode, ChangeNode } from './treeProvider';
 import { Status } from './git';
 import { CommitPanel } from './commitPanel';
 
 export async function activate(context: vscode.ExtensionContext) {
-  const git = new GitService();
+  const git = new GitService(context.workspaceState);
   try {
     await git.init();
   } catch (err) {
@@ -16,8 +17,7 @@ export async function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  const manager = new ChangelistManager(git, context.workspaceState);
-  const provider = new ChangelistTreeProvider(manager, git);
+  const provider = new ChangelistTreeProvider(git);
   // Resolves to empty content; used as the right side when diffing a deleted file.
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(EMPTY_SCHEME, {
@@ -32,15 +32,26 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(view);
 
+  // Hides the single-repo title-bar Pull/Push/Commit/New-Changelist/Update-from-Branch
+  // buttons in favor of per-folder equivalents once there's more than one repo open —
+  // those actions are ambiguous ("pull which folder?") without a specific repo.
+  const updateMultiRepoContext = () => {
+    void vscode.commands.executeCommand('setContext', 'changelists.multiRepo', git.repos.length > 1);
+  };
+  updateMultiRepoContext();
+  context.subscriptions.push(git.onDidChangeRepos(updateMultiRepoContext));
+
   const reg = (id: string, fn: (...args: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
   reg('changelists.refresh', () => provider.refresh());
 
-  reg('changelists.pull', async () => {
-    const upstream = git.upstream;
+  reg('changelists.pull', async (node?: RepoNode) => {
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
+    const upstream = repo.upstream;
     if (!upstream) {
-      const branch = git.currentBranch;
+      const branch = repo.currentBranch;
       vscode.window.showInformationMessage(
         branch
           ? `"${branch}" has no upstream branch yet — there's nothing to pull until you push it.`
@@ -58,9 +69,9 @@ export async function activate(context: vscode.ExtensionContext) {
       .get<'merge' | 'rebase'>('pullStrategy', 'merge');
     const ref = `${upstream.remote}/${upstream.name}`;
     try {
-      await git.fetch(upstream.remote, upstream.name);
-      if (strategy === 'rebase') await git.rebaseOnto(ref);
-      else await git.mergeRef(ref);
+      await repo.fetch(upstream.remote, upstream.name);
+      if (strategy === 'rebase') await repo.rebaseOnto(ref);
+      else await repo.mergeRef(ref);
       provider.refresh();
       vscode.window.showInformationMessage(`Pulled (${strategy}) from ${ref}.`);
     } catch (err) {
@@ -71,20 +82,22 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  reg('changelists.push', async () => {
+  reg('changelists.push', async (node?: RepoNode) => {
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
     try {
-      if (git.hasUpstream) {
-        await git.push();
+      if (repo.hasUpstream) {
+        await repo.push();
         vscode.window.showInformationMessage('Pushed.');
         return;
       }
       // No upstream yet (e.g. a brand new branch) — ask which remote to publish to.
-      const branch = git.currentBranch;
+      const branch = repo.currentBranch;
       if (!branch) {
         vscode.window.showErrorMessage('No current branch to push.');
         return;
       }
-      const remotes = git.remoteNames;
+      const remotes = repo.remoteNames;
       if (remotes.length === 0) {
         vscode.window.showErrorMessage('No git remotes configured.');
         return;
@@ -96,20 +109,22 @@ export async function activate(context: vscode.ExtensionContext) {
               placeHolder: `"${branch}" has no upstream — choose a remote to publish to`,
             });
       if (!remote) return;
-      await git.push(remote, branch, true);
+      await repo.push(remote, branch, true);
       vscode.window.showInformationMessage(`Pushed and set upstream to ${remote}/${branch}.`);
     } catch (err) {
       vscode.window.showErrorMessage(`Push failed: ${(err as Error).message}`);
     }
   });
 
-  reg('changelists.updateFromBranch', async () => {
-    const current = git.currentBranch;
+  reg('changelists.updateFromBranch', async (node?: RepoNode) => {
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
+    const current = repo.currentBranch;
     if (!current) {
       vscode.window.showErrorMessage('Not currently on a branch.');
       return;
     }
-    const branches = await git.listBranches();
+    const branches = await repo.listBranches();
     if (branches.length === 0) {
       vscode.window.showInformationMessage('No other branches found.');
       return;
@@ -144,12 +159,12 @@ export async function activate(context: vscode.ExtensionContext) {
     try {
       if (branchPick.isRemote) {
         const [remote, ...rest] = branchPick.ref.split('/');
-        await git.fetch(remote, rest.join('/'));
+        await repo.fetch(remote, rest.join('/'));
       } else {
-        await git.fetch(); // refresh remote-tracking refs in case they're stale
+        await repo.fetch(); // refresh remote-tracking refs in case they're stale
       }
-      if (modePick.mode === 'rebase') await git.rebaseOnto(branchPick.ref);
-      else await git.mergeRef(branchPick.ref);
+      if (modePick.mode === 'rebase') await repo.rebaseOnto(branchPick.ref);
+      else await repo.mergeRef(branchPick.ref);
       provider.refresh();
       const verb = modePick.mode === 'rebase' ? 'Rebased' : 'Merged';
       vscode.window.showInformationMessage(`${verb} "${current}" onto ${branchPick.ref}.`);
@@ -162,15 +177,17 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  reg('changelists.createChangelist', async () => {
+  reg('changelists.createChangelist', async (node?: RepoNode) => {
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
     const name = await vscode.window.showInputBox({
       prompt: 'New changelist name',
       validateInput: (v) =>
-        manager.getChangelists().includes(v.trim())
+        repo.manager.getChangelists().includes(v.trim())
           ? 'A changelist with this name already exists'
           : undefined,
     });
-    if (name && !manager.createChangelist(name)) {
+    if (name && !repo.manager.createChangelist(name)) {
       vscode.window.showWarningMessage('Could not create changelist.');
     }
   });
@@ -182,51 +199,54 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
     const name = await vscode.window.showInputBox({ prompt: 'Rename changelist', value: node.name });
-    if (name) manager.renameChangelist(node.name, name);
+    if (name) node.repo.manager.renameChangelist(node.name, name);
   });
 
   reg('changelists.deleteChangelist', (node?: ChangelistNode) => {
     if (!node) return;
-    if (!manager.deleteChangelist(node.name)) {
+    if (!node.repo.manager.deleteChangelist(node.name)) {
       vscode.window.showWarningMessage('The default changelist cannot be deleted.');
     }
   });
 
   reg('changelists.setActiveChangelist', (node?: ChangelistNode) => {
-    if (node) manager.setActive(node.name);
+    if (node) node.repo.manager.setActive(node.name);
   });
 
   reg('changelists.commitSelected', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
     const selected = selection(node, nodes).filter((n) => !n.change.untracked);
     if (selected.length === 0) return;
+    const repo = selected[0].repo;
     // Never reuse a bare changelist name here — that would look identical to
     // a full "Commit Changelist..." even though this may be a subset of it.
     const title =
       selected.length === 1 ? path.basename(selected[0].change.fsPath) : `${selected.length} selected files`;
-    CommitPanel.show(git, () => provider.refresh(), title, selected.map((n) => n.change));
+    CommitPanel.show(repo, () => provider.refresh(), title, selected.map((n) => n.change));
   });
 
   reg('changelists.moveToChangelist', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
     const selected = selection(node, nodes).filter((n) => !n.change.untracked);
     if (selected.length === 0) return;
+    const repo = selected[0].repo;
     const target = await chooseTarget(
-      manager,
+      repo.manager,
       `Move ${describe(selected)} to changelist`,
       selected.length === 1 ? selected[0].changelist : undefined,
     );
     if (!target) return;
-    for (const n of selected) manager.moveToChangelist(n.change.fsPath, target);
+    for (const n of selected) repo.manager.moveToChangelist(n.change.fsPath, target);
   });
 
   reg('changelists.addToChangelist', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
     const selected = selection(node, nodes).filter((n) => n.change.untracked);
     if (selected.length === 0) return;
-    const target = await chooseTarget(manager, `Add ${describe(selected)} to changelist`);
+    const repo = selected[0].repo;
+    const target = await chooseTarget(repo.manager, `Add ${describe(selected)} to changelist`);
     if (!target) return;
     try {
       const paths = selected.map((n) => n.change.fsPath);
-      await git.intentToAdd(paths);
-      for (const p of paths) manager.moveToChangelist(p, target);
+      await repo.intentToAdd(paths);
+      for (const p of paths) repo.manager.moveToChangelist(p, target);
       provider.refresh();
     } catch (err) {
       vscode.window.showErrorMessage(`Add to changelist failed: ${(err as Error).message}`);
@@ -234,37 +254,43 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   reg('changelists.commitChangelist', async (node?: ChangelistNode) => {
-    const name = node?.name ?? (await pickChangelist(manager));
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
+    const name = node?.name ?? (await pickChangelist(repo.manager));
     if (!name) return;
-    const changes = git
+    const changes = repo
       .getChanges()
-      .filter((c) => !c.untracked && manager.changelistOf(c.fsPath) === name);
+      .filter((c) => !c.untracked && repo.manager.changelistOf(c.fsPath) === name);
     if (changes.length === 0) {
       vscode.window.showInformationMessage(`Changelist "${name}" has no files to commit.`);
       return;
     }
-    CommitPanel.show(git, () => provider.refresh(), name, changes);
+    CommitPanel.show(repo, () => provider.refresh(), name, changes);
   });
 
   reg('changelists.rollbackChangelist', async (node?: ChangelistNode) => {
-    const name = node?.name ?? (await pickChangelist(manager));
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
+    const name = node?.name ?? (await pickChangelist(repo.manager));
     if (!name) return;
-    const changes = git
+    const changes = repo
       .getChanges()
-      .filter((c) => !c.untracked && manager.changelistOf(c.fsPath) === name);
+      .filter((c) => !c.untracked && repo.manager.changelistOf(c.fsPath) === name);
     if (changes.length === 0) {
       vscode.window.showInformationMessage(`Changelist "${name}" has no changes to roll back.`);
       return;
     }
-    await rollback(changes, `all ${changes.length} change(s) in "${name}"`);
+    await rollback(repo, changes, `all ${changes.length} change(s) in "${name}"`);
   });
 
   reg('changelists.showChangelistDiff', async (node?: ChangelistNode) => {
-    const name = node?.name ?? (await pickChangelist(manager));
+    const repo = node?.repo ?? git.repos[0];
+    if (!repo) return;
+    const name = node?.name ?? (await pickChangelist(repo.manager));
     if (!name) return;
-    const changes = git
+    const changes = repo
       .getChanges()
-      .filter((c) => !c.untracked && manager.changelistOf(c.fsPath) === name);
+      .filter((c) => !c.untracked && repo.manager.changelistOf(c.fsPath) === name);
     if (changes.length === 0) {
       vscode.window.showInformationMessage(`Changelist "${name}" has no changes to show.`);
       return;
@@ -282,10 +308,10 @@ export async function activate(context: vscode.ExtensionContext) {
   reg('changelists.rollbackChange', async (node?: ChangeNode, nodes?: ChangeNode[]) => {
     const selected = selection(node, nodes);
     if (selected.length === 0) return;
-    await rollback(selected.map((n) => n.change), describe(selected));
+    await rollback(selected[0].repo, selected.map((n) => n.change), describe(selected));
   });
 
-  async function rollback(changes: { fsPath: string }[], what: string) {
+  async function rollback(repo: Repo, changes: { fsPath: string }[], what: string) {
     const confirmed = await vscode.window.showWarningMessage(
       `Roll back ${what}? This discards the local changes and cannot be undone.`,
       { modal: true },
@@ -293,7 +319,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     if (confirmed !== 'Rollback') return;
     try {
-      await git.discardChanges(changes.map((c) => c.fsPath));
+      await repo.discardChanges(changes.map((c) => c.fsPath));
       provider.refresh();
     } catch (err) {
       vscode.window.showErrorMessage(`Rollback failed: ${(err as Error).message}`);
@@ -304,10 +330,11 @@ export async function activate(context: vscode.ExtensionContext) {
     if (node?.change) await openDiff(node.change);
   });
 
-  // Same as showDiff, but keyed by fsPath — used by the commit panel webview,
-  // which only knows file paths, not ChangeNode instances.
-  reg('changelists.showDiffPath', async (fsPath: string) => {
-    const change = git.getChanges().find((c) => c.fsPath === fsPath);
+  // Same as showDiff, but keyed by fsPath + repo root — used by the commit
+  // panel webview, which only knows file paths, not ChangeNode instances.
+  reg('changelists.showDiffPath', async (fsPath: string, repoRoot: string) => {
+    const repo = git.repos.find((r) => r.rootFsPath === repoRoot);
+    const change = repo?.getChanges().find((c) => c.fsPath === fsPath);
     if (change) await openDiff(change);
   });
 
@@ -368,12 +395,19 @@ function hasHeadVersion(status: Status): boolean {
   }
 }
 
-/** Resolve the set of nodes a context-menu command acts on (supports multi-select). */
+/**
+ * Resolve the set of nodes a context-menu command acts on (supports
+ * multi-select). If the selection spans more than one repository, only the
+ * nodes matching the first-selected item's repo are kept — an action can't
+ * sensibly operate across two repos at once.
+ */
 function selection(node?: ChangeNode, nodes?: ChangeNode[]): ChangeNode[] {
   const list = (nodes && nodes.length ? nodes : node ? [node] : []).filter(
     (n): n is ChangeNode => n instanceof ChangeNode,
   );
-  return list;
+  if (list.length <= 1) return list;
+  const firstRepo = list[0].repo;
+  return list.filter((n) => n.repo === firstRepo);
 }
 
 function describe(selected: ChangeNode[]): string {

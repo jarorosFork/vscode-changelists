@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GitService } from './gitService';
 
 export const DEFAULT_CHANGELIST = 'Changes';
 
@@ -18,11 +17,12 @@ const FILE_NAME = 'changelists.json';
 const LEGACY_MEMENTO_KEY = 'changelists.state.v1';
 
 /**
- * Owns the changelist model and persists it to a JSON file inside the repo's
- * `.git` directory — local-only, never committed, and independent of the
- * extension's own lifecycle, so changelists survive extension updates,
- * reinstalls, and even "clear extension data" prompts. Mirrors how JetBrains
- * keeps changelist membership in `.idea/workspace.xml` rather than IDE state.
+ * Owns the changelist model for ONE repository and persists it to a JSON file
+ * inside that repo's `.git` directory — local-only, never committed, and
+ * independent of the extension's own lifecycle, so changelists survive
+ * extension updates, reinstalls, and even "clear extension data" prompts.
+ * Mirrors how JetBrains keeps changelist membership in `.idea/workspace.xml`
+ * rather than IDE state.
  *
  * Git itself knows nothing about this — it is a pure local grouping.
  */
@@ -31,46 +31,30 @@ export class ChangelistManager {
   private assignments = new Map<string, string>();
   private active = DEFAULT_CHANGELIST;
 
-  // Tracks which repo root the in-memory state was loaded from, so we can
-  // detect when it's stale (e.g. the workspace's repo only became available
-  // after construction) and reload from the right file.
-  private loadedForRoot: string | undefined | null = null;
-
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
   constructor(
-    private readonly git: GitService,
-    private readonly legacyMemento?: vscode.Memento,
+    private readonly rootFsPath: string,
+    legacyMemento?: vscode.Memento,
   ) {
-    this.ensureLoaded();
+    this.load(legacyMemento);
   }
 
-  private get statePath(): string | undefined {
-    const root = this.git.repository?.rootUri.fsPath;
-    return root ? path.join(root, '.git', FILE_NAME) : undefined;
+  dispose() {
+    this._onDidChange.dispose();
   }
 
-  /** Reload from disk if the active repo root has changed since the last load. */
-  ensureLoaded() {
-    const root = this.git.repository?.rootUri.fsPath;
-    if (root === this.loadedForRoot) return;
-    this.loadedForRoot = root;
-    this.load();
+  private get statePath(): string {
+    return path.join(this.rootFsPath, '.git', FILE_NAME);
   }
 
-  private load() {
-    this.names = [DEFAULT_CHANGELIST];
-    this.assignments = new Map();
-    this.active = DEFAULT_CHANGELIST;
-
+  private load(legacyMemento?: vscode.Memento) {
     const file = this.statePath;
-    if (!file) return; // no repo open yet
-
-    const raw = this.readFile(file) ?? this.migrateLegacy();
+    const raw = this.readFile(file) ?? this.migrateLegacy(legacyMemento);
     if (!raw) return;
     this.applyState(raw);
-    if (!this.readFile(file)) this.save(); // persist a migrated-in legacy state
+    if (!this.readFile(file)) this.persist(); // persist a migrated-in legacy state
   }
 
   private readFile(file: string): PersistedState | undefined {
@@ -82,9 +66,9 @@ export class ChangelistManager {
   }
 
   /** One-time migration from the pre-0.0.9 workspaceState-backed storage. */
-  private migrateLegacy(): PersistedState | undefined {
-    const raw = this.legacyMemento?.get<PersistedState>(LEGACY_MEMENTO_KEY);
-    if (raw) void this.legacyMemento?.update(LEGACY_MEMENTO_KEY, undefined);
+  private migrateLegacy(legacyMemento?: vscode.Memento): PersistedState | undefined {
+    const raw = legacyMemento?.get<PersistedState>(LEGACY_MEMENTO_KEY);
+    if (raw) void legacyMemento?.update(LEGACY_MEMENTO_KEY, undefined);
     return raw;
   }
 
@@ -98,7 +82,6 @@ export class ChangelistManager {
   /** Write current state to disk without notifying listeners. */
   private persist() {
     const file = this.statePath;
-    if (!file) return;
     const state: PersistedState = {
       names: this.names,
       assignments: Object.fromEntries(this.assignments),

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { GitService, WorkingChange } from './gitService';
+import { Repo, WorkingChange } from './repo';
 import { Status } from './git';
 
 interface Row {
@@ -40,21 +40,22 @@ export class CommitPanel {
   private readonly disposables: vscode.Disposable[] = [];
 
   static show(
-    git: GitService,
+    repo: Repo,
     onCommitted: () => void,
     changelistName: string,
     changes: WorkingChange[],
   ) {
     if (CommitPanel.current) {
       CommitPanel.current.panel.reveal(vscode.ViewColumn.Active);
+      CommitPanel.current.repo = repo;
       CommitPanel.current.setContent(changelistName, changes);
       return;
     }
-    CommitPanel.current = new CommitPanel(git, onCommitted, changelistName, changes);
+    CommitPanel.current = new CommitPanel(repo, onCommitted, changelistName, changes);
   }
 
   private constructor(
-    private readonly git: GitService,
+    private repo: Repo,
     private readonly onCommitted: () => void,
     changelistName: string,
     changes: WorkingChange[],
@@ -82,11 +83,11 @@ export class CommitPanel {
           break;
         case 'diff': {
           const row = this.rows[msg.index];
-          if (row) await vscode.commands.executeCommand('changelists.showDiffPath', row.fsPath);
+          if (row) await vscode.commands.executeCommand('changelists.showDiffPath', row.fsPath, this.repo.rootFsPath);
           break;
         }
         case 'requestLastMessage': {
-          const last = await this.git.lastCommitMessage();
+          const last = await this.repo.lastCommitMessage();
           this.panel.webview.postMessage({ type: 'lastMessage', message: last ?? '' });
           break;
         }
@@ -118,7 +119,7 @@ export class CommitPanel {
     const paths = indices.map((i) => this.rows[i]?.fsPath).filter((p): p is string => !!p);
     if (!message.trim() || (paths.length === 0 && !amend)) return;
     try {
-      await this.git.commitFiles(paths, message.trim(), { amend });
+      await this.repo.commitFiles(paths, message.trim(), { amend });
       this.onCommitted();
       this.panel.dispose();
       const what =

@@ -22,6 +22,20 @@ membership in `.idea/workspace.xml` rather than IDE state. Upgrading from a
 version before 0.0.9 migrates your existing assignments automatically on first
 load.
 
+## Multi-root workspaces
+
+If your workspace has more than one folder with a git repo, the view shows one
+top-level node per folder, each with its own **Changes**, custom changelists,
+and **Unversioned Files** underneath — completely independent changelist state
+per repo (each persists to its own `<repo>/.git/changelists.json`). With a
+single repo open, the view stays flat exactly as before — no redundant
+top-level wrapper.
+
+Because **Pull**/**Push**/**New Changelist**/**Update from Branch** need to
+know *which* repo to act on, they move off the view's title bar and onto each
+folder's own row (inline icons + right-click) once there's more than one repo.
+With a single repo they stay on the title bar as usual.
+
 ## Usage
 
 1. Use the **Pull** / **Push** buttons in the view title bar to sync with the
@@ -87,6 +101,7 @@ npx @vscode/vsce package
 
 ## Notes / limitations (MVP)
 
-- Operates on the first repository in the workspace (no multi-repo picker yet).
 - Move/commit work at file granularity (no partial/hunk staging per changelist).
 - Assignments are pruned automatically when a file no longer has changes.
+- Dragging a file onto a changelist in a different repo is rejected — a file
+  can only belong to a changelist in its own repository.
