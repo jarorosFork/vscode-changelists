@@ -86,6 +86,12 @@ With a single repo they stay on the title bar as usual.
      multi-select) → right-click → **Commit Selected...** — opens the same
      commit dialog, scoped to just what you selected.
 7. Right-click a changelist → **Set as Active** to make new changes land there.
+8. **Show File History** — right-click a file (in the editor, the Explorer, or
+   a Changelists-view row) to list every commit that touched it (message,
+   author, relative date). Pick a commit to see exactly what it changed in
+   that file, diffed against its parent; the commit that added the file shows
+   all-green against an empty left side. Note: history follows the current
+   path only (renames are not followed).
 
 ## Develop / run
 

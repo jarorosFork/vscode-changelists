@@ -51,6 +51,20 @@ export interface BranchQuery {
   readonly remote?: boolean;
 }
 
+export interface LogOptions {
+  readonly maxEntries?: number;
+  /** Restrict the log to commits touching this file path. */
+  readonly path?: string;
+}
+
+export interface Commit {
+  readonly hash: string;
+  readonly message: string;
+  readonly parents: string[];
+  readonly authorName?: string;
+  readonly authorDate?: Date;
+}
+
 export interface RepositoryState {
   readonly workingTreeChanges: Change[];
   readonly indexChanges: Change[];
@@ -67,7 +81,7 @@ export interface Repository {
   revert(resources: string[]): Promise<void>;
   clean(paths: string[]): Promise<void>;
   commit(message: string, opts?: { all?: boolean; amend?: boolean }): Promise<void>;
-  log(opts?: { maxEntries?: number }): Promise<{ message: string }[]>;
+  log(options?: LogOptions): Promise<Commit[]>;
   pull(): Promise<void>;
   push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
   fetch(remote?: string, ref?: string, depth?: number): Promise<void>;

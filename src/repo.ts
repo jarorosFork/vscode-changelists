@@ -3,7 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import { Status } from './git';
-import type { Repository, Change } from './git';
+import type { Repository, Change, Commit } from './git';
 import { ChangelistManager } from './changelistManager';
 
 const execFileAsync = promisify(execFile);
@@ -84,6 +84,31 @@ export class Repo {
 
     if (fsPaths.length) await this.repository.add(fsPaths);
     await this.repository.commit(message, { amend: opts?.amend });
+  }
+
+  /** Commits that touched the given file, newest first. Does not follow renames. */
+  async fileHistory(fsPath: string, maxEntries = 100): Promise<Commit[]> {
+    try {
+      return await this.repository.log({ path: fsPath, maxEntries });
+    } catch {
+      return []; // log throws on repos with no commits
+    }
+  }
+
+  /**
+   * Whether the file exists at the given ref (`git cat-file -e ref:path`).
+   * Used to pick an empty diff side when a commit is the one that added the
+   * file — asking git: for a nonexistent ref:path yields an unreadable-file
+   * error editor instead of an empty side.
+   */
+  async fileExistsAtRef(ref: string, fsPath: string): Promise<boolean> {
+    const relPath = path.relative(this.rootFsPath, fsPath).split(path.sep).join('/');
+    try {
+      await execFileAsync('git', ['cat-file', '-e', `${ref}:${relPath}`], { cwd: this.rootFsPath });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** The message of the most recent commit, used to prefill "amend". */

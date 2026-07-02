@@ -2,7 +2,7 @@
   "name": "vscode-changelists",
   "displayName": "Git Changelists",
   "description": "JetBrains-style git changelists for VSCode. Group working-tree changes into changelists and commit only the ones you choose.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "jaroros",
   "license": "MIT",
   "repository": {
@@ -158,6 +158,12 @@
         "title": "Open File",
         "category": "Changelists",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "changelists.showFileHistory",
+        "title": "Show File History",
+        "category": "Changelists",
+        "icon": "$(history)"
       }
     ],
     "menus": {
@@ -285,6 +291,11 @@
           "group": "3_open@2"
         },
         {
+          "command": "changelists.showFileHistory",
+          "when": "view == changelists.view && viewItem == change",
+          "group": "3_open@3"
+        },
+        {
           "command": "changelists.commitSelected",
           "when": "view == changelists.view && viewItem == change",
           "group": "1_actions@1"
@@ -323,6 +334,20 @@
           "command": "changelists.rollbackChange",
           "when": "view == changelists.view && viewItem == unversioned-change",
           "group": "1_actions@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "changelists.showFileHistory",
+          "when": "resourceScheme == file",
+          "group": "changelists@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "changelists.showFileHistory",
+          "when": "!explorerResourceIsFolder && resourceScheme == file",
+          "group": "changelists@1"
         }
       ]
     }

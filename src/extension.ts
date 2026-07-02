@@ -366,13 +366,76 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     await vscode.commands.executeCommand('vscode.open', uri);
   });
+
+  reg('changelists.showFileHistory', async (arg?: ChangeNode | vscode.Uri) => {
+    // Invoked from our tree (ChangeNode), from editor/explorer context menus
+    // (a Uri), or from the command palette (no arg → active editor).
+    let uri: vscode.Uri | undefined;
+    let repo: Repo | undefined;
+    if (arg instanceof ChangeNode) {
+      uri = arg.change.uri;
+      repo = arg.repo;
+    } else if (arg instanceof vscode.Uri) {
+      uri = arg;
+    } else {
+      uri = vscode.window.activeTextEditor?.document.uri;
+    }
+    if (!uri || uri.scheme !== 'file') return;
+    // Longest-prefix match so nested repos resolve to the innermost one.
+    repo ??= git.repos
+      .filter((r) => uri!.fsPath === r.rootFsPath || uri!.fsPath.startsWith(r.rootFsPath + path.sep))
+      .sort((a, b) => b.rootFsPath.length - a.rootFsPath.length)[0];
+    if (!repo) {
+      vscode.window.showInformationMessage('This file is not inside an open git repository.');
+      return;
+    }
+
+    const name = path.basename(uri.fsPath);
+    const commits = await repo.fileHistory(uri.fsPath);
+    if (commits.length === 0) {
+      vscode.window.showInformationMessage(`No commits found for "${name}".`);
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      commits.map((c) => ({
+        label: c.message.split('\n')[0],
+        description: `${c.hash.slice(0, 7)} · ${c.authorName ?? 'unknown'} · ${relativeDate(c.authorDate)}`,
+        commit: c,
+      })),
+      {
+        placeHolder: `File History: ${name} (${commits.length} commit${commits.length === 1 ? '' : 's'})`,
+        matchOnDescription: true,
+      },
+    );
+    if (!picked) return;
+
+    // Diff the file at that commit against its parent — "what did this commit
+    // do to this file". A side where the file doesn't exist (added by this
+    // commit → no parent version; deleted by it → no version at the commit)
+    // gets empty content instead of an unresolvable git: URI.
+    const commit = picked.commit;
+    const parent = commit.parents[0];
+    const [hasLeft, hasRight] = await Promise.all([
+      parent ? repo.fileExistsAtRef(parent, uri.fsPath) : Promise.resolve(false),
+      repo.fileExistsAtRef(commit.hash, uri.fsPath),
+    ]);
+    const left = hasLeft ? gitRefUri(uri, parent) : gitEmptyUri(uri);
+    const right = hasRight ? gitRefUri(uri, commit.hash) : gitEmptyUri(uri);
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${name} (${commit.hash.slice(0, 7)})`);
+  });
 }
 
 const EMPTY_SCHEME = 'changelist-empty';
 
+/** A `git:` URI that resolves to the file's content at the given ref. */
+function gitRefUri(uri: vscode.Uri, ref: string): vscode.Uri {
+  return uri.with({ scheme: 'git', query: JSON.stringify({ path: uri.fsPath, ref }) });
+}
+
 /** A `git:` URI that resolves to the file's content at HEAD. */
 function gitHeadUri(uri: vscode.Uri): vscode.Uri {
-  return uri.with({ scheme: 'git', query: JSON.stringify({ path: uri.fsPath, ref: 'HEAD' }) });
+  return gitRefUri(uri, 'HEAD');
 }
 
 /** A URI that always resolves to empty content (used where a side has no file). */
@@ -393,6 +456,30 @@ function hasHeadVersion(status: Status): boolean {
     default:
       return true;
   }
+}
+
+/** "2 days ago"-style formatting for the history picker. */
+function relativeDate(d?: Date): string {
+  if (!d) return '';
+  const seconds = Math.max(0, (Date.now() - new Date(d).getTime()) / 1000);
+  const units: [number, string][] = [
+    [60, 'second'],
+    [60, 'minute'],
+    [24, 'hour'],
+    [7, 'day'],
+    [4.35, 'week'],
+    [12, 'month'],
+    [Number.POSITIVE_INFINITY, 'year'],
+  ];
+  let value = seconds;
+  for (const [size, unit] of units) {
+    if (value < size) {
+      const n = Math.floor(value);
+      return n <= 0 ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+    }
+    value /= size;
+  }
+  return '';
 }
 
 /**
